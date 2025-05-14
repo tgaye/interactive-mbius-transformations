@@ -1,0 +1,539 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Möbius Transformations</title>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: Arial, sans-serif;
+            color: white;
+        }
+        #canvas-container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: center;
+            position: relative;
+        }
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 300px;
+            z-index: 100;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        .control-group h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #ccc;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+        input[type="range"] {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .value-display {
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 5px;
+        }
+        button {
+            background: #444;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            margin-right: 5px;
+            margin-bottom: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #555;
+        }
+        button.active {
+            background: #0078ff;
+        }
+        #error-message {
+            color: red;
+            text-align: center;
+            padding: 20px;
+        }
+        .dual-view {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+        .view-label {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        #original-label {
+            top: 10px;
+            left: 10px;
+        }
+        #transformed-label {
+            top: 10px;
+            right: 10px;
+        }
+    </style>
+
+<base target="_self">
+
+
+    </head><body><div id="canvas-container">
+        <div id="error-message"></div>
+        <div class="dual-view">
+            <div id="original-label" class="view-label">Original Plane</div>
+            <div id="transformed-label" class="view-label">Transformed Plane</div>
+        </div>
+        <div id="ui-container">
+            <div class="control-group">
+                <h3>Möbius Parameters</h3>
+                <label>a (real)</label>
+                <input type="range" id="a-real" min="-2" max="2" step="0.01" value="1">
+                <div class="value-display" id="a-real-value">1.00</div>
+                
+                <label>a (imaginary)</label>
+                <input type="range" id="a-imag" min="-2" max="2" step="0.01" value="0">
+                <div class="value-display" id="a-imag-value">0.00</div>
+                
+                <label>b (real)</label>
+                <input type="range" id="b-real" min="-2" max="2" step="0.01" value="0">
+                <div class="value-display" id="b-real-value">0.00</div>
+                
+                <label>b (imaginary)</label>
+                <input type="range" id="b-imag" min="-2" max="2" step="0.01" value="0">
+                <div class="value-display" id="b-imag-value">0.00</div>
+                
+                <label>c (real)</label>
+                <input type="range" id="c-real" min="-2" max="2" step="0.01" value="0">
+                <div class="value-display" id="c-real-value">0.00</div>
+                
+                <label>c (imaginary)</label>
+                <input type="range" id="c-imag" min="-2" max="2" step="0.01" value="0">
+                <div class="value-display" id="c-imag-value">0.00</div>
+                
+                <label>d (real)</label>
+                <input type="range" id="d-real" min="-2" max="2" step="0.01" value="1">
+                <div class="value-display" id="d-real-value">1.00</div>
+                
+                <label>d (imaginary)</label>
+                <input type="range" id="d-imag" min="-2" max="2" step="0.01" value="0">
+                <div class="value-display" id="d-imag-value">0.00</div>
+            </div>
+            
+            <div class="control-group">
+                <h3>Preset Transformations</h3>
+                <button id="preset-identity">Identity</button>
+                <button id="preset-translation">Translation</button>
+                <button id="preset-rotation">Rotation</button>
+                <button id="preset-inversion">Inversion</button>
+                <button id="preset-complex">Complex</button>
+            </div>
+            
+            <div class="control-group">
+                <h3>Visualization</h3>
+                <label>Show Grid</label>
+                <input type="checkbox" id="show-grid" checked="">
+                
+                <label>Show Circles</label>
+                <input type="checkbox" id="show-circles" checked="">
+                
+                <label>Color Mapping</label>
+                <select id="color-mode">
+                    <option value="0">Argument</option>
+                    <option value="1">Magnitude</option>
+                    <option value="2">Fixed Points</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check for WebGL support
+        if (!WebGLRenderingContext) {
+            document.getElementById('error-message').textContent = 'Your browser does not support WebGL. Please try with a modern browser.';
+            throw new Error('WebGL not supported');
+        }
+
+        // Scene setup
+        const container = document.getElementById('canvas-container');
+        const width = Math.min(window.innerWidth, 1200);
+        const height = width * 0.5625; // 16:9 aspect ratio
+        
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -1, 1);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        container.appendChild(renderer.domElement);
+
+        // Shader material
+        const vertexShader = `
+            varying vec2 vUv;
+            
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            precision highp float;
+            
+            uniform vec2 resolution;
+            uniform float time;
+            uniform vec4 a;
+            uniform vec4 b;
+            uniform vec4 c;
+            uniform vec4 d;
+            uniform bool showGrid;
+            uniform bool showCircles;
+            uniform int colorMode;
+            
+            varying vec2 vUv;
+            
+            // Complex number operations
+            vec2 cmul(vec2 z1, vec2 z2) {
+                return vec2(z1.x * z2.x - z1.y * z2.y, z1.x * z2.y + z1.y * z2.x);
+            }
+            
+            vec2 cdiv(vec2 z1, vec2 z2) {
+                float denom = z2.x * z2.x + z2.y * z2.y;
+                return vec2(
+                    (z1.x * z2.x + z1.y * z2.y) / denom,
+                    (z1.y * z2.x - z1.x * z2.y) / denom
+                );
+            }
+            
+            vec2 mobius(vec2 z, vec2 a, vec2 b, vec2 c, vec2 d) {
+                if (c.x == 0.0 && c.y == 0.0) {
+                    return cmul(a, z) + b;
+                }
+                vec2 numerator = cmul(a, z) + b;
+                vec2 denominator = cmul(c, z) + d;
+                return cdiv(numerator, denominator);
+            }
+            
+            // Distance to line segment
+            float lineDist(vec2 p, vec2 a, vec2 b) {
+                vec2 pa = p - a;
+                vec2 ba = b - a;
+                float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+                return length(pa - ba * h);
+            }
+            
+            // Distance to circle
+            float circleDist(vec2 p, vec2 center, float radius) {
+                return abs(length(p - center) - radius);
+            }
+            
+            void main() {
+                // Map UV to complex plane coordinates (-2 to 2)
+                vec2 z = (vUv - 0.5) * 4.0;
+                
+                // Apply Möbius transformation
+                vec2 a_complex = vec2(a.x, a.y);
+                vec2 b_complex = vec2(b.x, b.y);
+                vec2 c_complex = vec2(c.x, c.y);
+                vec2 d_complex = vec2(d.x, d.y);
+                
+                vec2 w = mobius(z, a_complex, b_complex, c_complex, d_complex);
+                
+                // Visualization
+                vec3 color = vec3(0.0);
+                
+                // Grid lines
+                if (showGrid) {
+                    float grid = 0.0;
+                    for (float i = -2.0; i <= 2.0; i += 0.5) {
+                        grid += smoothstep(0.01, 0.0, abs(z.x - i));
+                        grid += smoothstep(0.01, 0.0, abs(z.y - i));
+                    }
+                    color += grid * 0.2;
+                }
+                
+                // Circles and lines in original plane
+                if (showCircles) {
+                    // Unit circle
+                    float dist = circleDist(z, vec2(0.0), 1.0);
+                    color += smoothstep(0.02, 0.0, dist) * vec3(0.0, 0.5, 1.0);
+                    
+                    // Real and imaginary axes
+                    color += smoothstep(0.02, 0.0, abs(z.x)) * vec3(1.0, 0.3, 0.3);
+                    color += smoothstep(0.02, 0.0, abs(z.y)) * vec3(0.3, 1.0, 0.3);
+                    
+                    // Some additional circles
+                    dist = circleDist(z, vec2(1.5, 0.5), 0.5);
+                    color += smoothstep(0.02, 0.0, dist) * vec3(1.0, 0.8, 0.0);
+                    
+                    dist = circleDist(z, vec2(-1.0, -1.0), 0.8);
+                    color += smoothstep(0.02, 0.0, dist) * vec3(0.8, 0.0, 1.0);
+                }
+                
+                // Color mapping of transformed plane
+                vec3 mapColor = vec3(0.0);
+                if (colorMode == 0) {
+                    // Argument (angle) coloring
+                    float angle = atan(w.y, w.x);
+                    mapColor = vec3(
+                        0.5 + 0.5 * cos(angle),
+                        0.5 + 0.5 * cos(angle + 2.094),
+                        0.5 + 0.5 * cos(angle - 2.094)
+                    );
+                } else if (colorMode == 1) {
+                    // Magnitude coloring
+                    float mag = length(w);
+                    mapColor = vec3(
+                        smoothstep(0.0, 2.0, mag),
+                        smoothstep(1.0, 3.0, mag),
+                        smoothstep(2.0, 4.0, mag)
+                    );
+                } else {
+                    // Fixed points visualization
+                    vec2 fixed1 = vec2(0.0);
+                    vec2 fixed2 = vec2(0.0);
+                    
+                    // Calculate fixed points (w = z)
+                    if (c.x == 0.0 && c.y == 0.0) {
+                        // Linear case (az + b = z)
+                        if (a.x != 1.0 || a.y != 0.0) {
+                            fixed1 = cdiv(b_complex, vec2(1.0) - a_complex);
+                        }
+                    } else {
+                        // Quadratic case (az + b = z(cz + d))
+                        // cz² + (d - a)z - b = 0
+                        vec2 A = c_complex;
+                        vec2 B = d_complex - a_complex;
+                        vec2 C = -b_complex;
+                        
+                        vec2 discriminant = cmul(B, B) - 4.0 * cmul(A, C);
+                        vec2 sqrtDiscriminant = vec2(sqrt(length(discriminant)), 0.0);
+                        
+                        fixed1 = cdiv(-B + sqrtDiscriminant, 2.0 * A);
+                        fixed2 = cdiv(-B - sqrtDiscriminant, 2.0 * A);
+                    }
+                    
+                    // Visualize fixed points
+                    float dist1 = length(z - fixed1);
+                    float dist2 = length(z - fixed2);
+                    mapColor = vec3(
+                        smoothstep(0.1, 0.0, dist1),
+                        smoothstep(0.1, 0.0, dist2),
+                        0.0
+                    );
+                }
+                
+                // Blend visualization
+                color = mix(color, mapColor, 0.7);
+                
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                resolution: { value: new THREE.Vector2(width, height) },
+                time: { value: 0 },
+                a: { value: new THREE.Vector4(1, 0, 0, 0) }, // a.real, a.imag, unused, unused
+                b: { value: new THREE.Vector4(0, 0, 0, 0) }, // b.real, b.imag, unused, unused
+                c: { value: new THREE.Vector4(0, 0, 0, 0) }, // c.real, c.imag, unused, unused
+                d: { value: new THREE.Vector4(1, 0, 0, 0) }, // d.real, d.imag, unused, unused
+                showGrid: { value: true },
+                showCircles: { value: true },
+                colorMode: { value: 0 }
+            },
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader
+        });
+
+        // Geometry - full screen quad
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Dual view setup
+        const originalMaterial = material.clone();
+        originalMaterial.uniforms.showGrid.value = true;
+        originalMaterial.uniforms.showCircles.value = true;
+        originalMaterial.uniforms.colorMode.value = 0;
+        
+        const originalMesh = new THREE.Mesh(geometry, originalMaterial);
+        originalMesh.scale.set(0.5, 1, 1);
+        originalMesh.position.x = -0.5;
+        scene.add(originalMesh);
+        
+        const transformedMesh = new THREE.Mesh(geometry, material);
+        transformedMesh.scale.set(0.5, 1, 1);
+        transformedMesh.position.x = 0.5;
+        scene.add(transformedMesh);
+
+        // UI controls
+        function updateUniforms() {
+            material.uniforms.a.value.set(
+                parseFloat(document.getElementById('a-real').value),
+                parseFloat(document.getElementById('a-imag').value),
+                0, 0
+            );
+            material.uniforms.b.value.set(
+                parseFloat(document.getElementById('b-real').value),
+                parseFloat(document.getElementById('b-imag').value),
+                0, 0
+            );
+            material.uniforms.c.value.set(
+                parseFloat(document.getElementById('c-real').value),
+                parseFloat(document.getElementById('c-imag').value),
+                0, 0
+            );
+            material.uniforms.d.value.set(
+                parseFloat(document.getElementById('d-real').value),
+                parseFloat(document.getElementById('d-imag').value),
+                0, 0
+            );
+            
+            // Update value displays
+            document.getElementById('a-real-value').textContent = document.getElementById('a-real').value;
+            document.getElementById('a-imag-value').textContent = document.getElementById('a-imag').value;
+            document.getElementById('b-real-value').textContent = document.getElementById('b-real').value;
+            document.getElementById('b-imag-value').textContent = document.getElementById('b-imag').value;
+            document.getElementById('c-real-value').textContent = document.getElementById('c-real').value;
+            document.getElementById('c-imag-value').textContent = document.getElementById('c-imag').value;
+            document.getElementById('d-real-value').textContent = document.getElementById('d-real').value;
+            document.getElementById('d-imag-value').textContent = document.getElementById('d-imag').value;
+        }
+
+        // Preset buttons
+        document.getElementById('preset-identity').addEventListener('click', function() {
+            document.getElementById('a-real').value = 1;
+            document.getElementById('a-imag').value = 0;
+            document.getElementById('b-real').value = 0;
+            document.getElementById('b-imag').value = 0;
+            document.getElementById('c-real').value = 0;
+            document.getElementById('c-imag').value = 0;
+            document.getElementById('d-real').value = 1;
+            document.getElementById('d-imag').value = 0;
+            updateUniforms();
+        });
+
+        document.getElementById('preset-translation').addEventListener('click', function() {
+            document.getElementById('a-real').value = 1;
+            document.getElementById('a-imag').value = 0;
+            document.getElementById('b-real').value = 0.5;
+            document.getElementById('b-imag').value = 0.5;
+            document.getElementById('c-real').value = 0;
+            document.getElementById('c-imag').value = 0;
+            document.getElementById('d-real').value = 1;
+            document.getElementById('d-imag').value = 0;
+            updateUniforms();
+        });
+
+        document.getElementById('preset-rotation').addEventListener('click', function() {
+            document.getElementById('a-real').value = 0;
+            document.getElementById('a-imag').value = 1;
+            document.getElementById('b-real').value = 0;
+            document.getElementById('b-imag').value = 0;
+            document.getElementById('c-real').value = 0;
+            document.getElementById('c-imag').value = 0;
+            document.getElementById('d-real').value = 1;
+            document.getElementById('d-imag').value = 0;
+            updateUniforms();
+        });
+
+        document.getElementById('preset-inversion').addEventListener('click', function() {
+            document.getElementById('a-real').value = 0;
+            document.getElementById('a-imag').value = 0;
+            document.getElementById('b-real').value = 1;
+            document.getElementById('b-imag').value = 0;
+            document.getElementById('c-real').value = 1;
+            document.getElementById('c-imag').value = 0;
+            document.getElementById('d-real').value = 0;
+            document.getElementById('d-imag').value = 0;
+            updateUniforms();
+        });
+
+        document.getElementById('preset-complex').addEventListener('click', function() {
+            document.getElementById('a-real').value = 0.8;
+            document.getElementById('a-imag').value = 0.6;
+            document.getElementById('b-real').value = -0.3;
+            document.getElementById('b-imag').value = 0.4;
+            document.getElementById('c-real').value = -0.2;
+            document.getElementById('c-imag').value = 0.7;
+            document.getElementById('d-real').value = 0.9;
+            document.getElementById('d-imag').value = -0.1;
+            updateUniforms();
+        });
+
+        // Checkbox controls
+        document.getElementById('show-grid').addEventListener('change', function() {
+            material.uniforms.showGrid.value = this.checked;
+            originalMaterial.uniforms.showGrid.value = this.checked;
+        });
+
+        document.getElementById('show-circles').addEventListener('change', function() {
+            material.uniforms.showCircles.value = this.checked;
+            originalMaterial.uniforms.showCircles.value = this.checked;
+        });
+
+        document.getElementById('color-mode').addEventListener('change', function() {
+            material.uniforms.colorMode.value = parseInt(this.value);
+        });
+
+        // Slider controls
+        const sliders = [
+            'a-real', 'a-imag', 'b-real', 'b-imag', 
+            'c-real', 'c-imag', 'd-real', 'd-imag'
+        ];
+        
+        sliders.forEach(id => {
+            document.getElementById(id).addEventListener('input', updateUniforms);
+        });
+
+        // Initial update
+        updateUniforms();
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            material.uniforms.time.value += 0.01;
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Handle window resize
+        function onWindowResize() {
+            const newWidth = Math.min(window.innerWidth, 1200);
+            const newHeight = newWidth * 0.5625;
+            
+            renderer.setSize(newWidth, newHeight);
+            camera.updateProjectionMatrix();
+            
+            material.uniforms.resolution.value.set(newWidth, newHeight);
+            originalMaterial.uniforms.resolution.value.set(newWidth, newHeight);
+        }
+        window.addEventListener('resize', onWindowResize);
+    </script>
+
+              
+          
+                
+          
+              
+</body></html>
